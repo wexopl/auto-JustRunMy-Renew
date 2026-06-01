@@ -38,6 +38,9 @@ if not EMAIL or not PASSWORD:
 # 全局变量，用于动态保存网页上抓取到的应用名称
 DYNAMIC_APP_NAME = "未知应用"
 
+# 全局变量，用于保存落地 IP 信息（在 main 中赋值）
+CURRENT_IP_INFO = "未知 IP"
+
 # ============================================================
 #  Hysteria2 代理模块
 # ============================================================
@@ -136,6 +139,23 @@ def mask_ip(ip: str) -> str:
     return ip.rsplit(".", 1)[0] + ".***"
 
 
+def mask_email(email: str) -> str:
+    """
+    脱敏邮箱地址，保留首尾字母，中间用 * 代替，@ 及后面不脱敏
+    例: user@example.com -> u***r@example.com
+    """
+    if "@" not in email:
+        if len(email) <= 2:
+            return email
+        return email[0] + "*" * (len(email) - 2) + email[-1]
+    local, domain = email.split("@", 1)
+    if len(local) <= 2:
+        masked_local = local
+    else:
+        masked_local = local[0] + "*" * (len(local) - 2) + local[-1]
+    return f"{masked_local}@{domain}"
+
+
 def check_ip(proxy: Optional[str] = None) -> str:
     """检查落地 IP，明确指出是否使用了代理"""
     try:
@@ -197,18 +217,25 @@ def send_tg_message(status_icon, status_text, time_left):
     local_time = time.gmtime(time.time() + 8 * 3600)
     current_time_str = time.strftime("%Y-%m-%d %H:%M:%S", local_time)
 
+    # 脱敏邮箱，构造账号超链接
+    masked = mask_email(EMAIL)
+    account_line = f"<a href='tg://user?id={TG_CHAT_ID}'>{masked}</a>"
+
     # 按照格式拼接消息，动态注入抓取到的应用名称
     text = (
-        f"justrunmy.app 续期报告\n🖥 {DYNAMIC_APP_NAME}\n"
+        f"🎮 justrunmy.app 续期报告\n🖥 {DYNAMIC_APP_NAME}\n"
+        f"👤 账号: {account_line}\n"
+        f"🌐 IP: {CURRENT_IP_INFO}\n"
+        f"🕐 运行时间: {current_time_str}\n"
         f"{status_icon} {status_text}\n"
-        f"⏱️ 剩余: {time_left}\n"
-        f"时间: {current_time_str}"
+        f"⏱️ 剩余: {time_left}"
     )
 
     url = f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TG_CHAT_ID,
-        "text": text
+        "text": text,
+        "parse_mode": "HTML"
     }
     
     try:
@@ -558,6 +585,10 @@ def main():
     print(f"🔍 正在检查 IP 信息（使用代理: {bool(proxy_url)})...")
     ip_info = check_ip(proxy_url)
     print(f"🌐 IP 信息：{ip_info}")
+
+    # 写入全局变量，供 send_tg_message 使用
+    global CURRENT_IP_INFO
+    CURRENT_IP_INFO = ip_info
 
     sb_kwargs = {"uc": True, "test": True, "headless": False}
 
